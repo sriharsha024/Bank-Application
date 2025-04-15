@@ -4,6 +4,7 @@ import com.bank.BankApplication.dto.*;
 import com.bank.BankApplication.entity.User;
 import com.bank.BankApplication.repo.UserRepo;
 import com.bank.BankApplication.utils.AccountUtils;
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +19,9 @@ public class UserServiceImpl implements UserService {
 
     @Autowired
     private EmailService emailService;
+
+    @Autowired
+    private TransactionService transactionService;
 
     public BankResponse createUser(UserRequest userRequest) {
         if(userRepo.existsByEmail(userRequest.getEmail())){
@@ -170,6 +174,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
     public BankResponse creditAccount(CreditDebitRequest creditDebitRequest) {
         if(!userRepo.existsByAccountNumber(creditDebitRequest.getAccountNumber())){
             return BankResponse.builder()
@@ -181,6 +186,14 @@ public class UserServiceImpl implements UserService {
         User userToCredit=userRepo.findByAccountNumber(creditDebitRequest.getAccountNumber()).get();
         userToCredit.setAccountBalance(userToCredit.getAccountBalance().add(creditDebitRequest.getAmount()));
         userRepo.save(userToCredit);
+
+        TransactionDTO transactionDTO=TransactionDTO.builder()
+                .accountNumber(userToCredit.getAccountNumber())
+                .transactionType("CREDIT")
+                .amount(creditDebitRequest.getAmount())
+                .status("SUCCESS")
+                .build();
+        transactionService.saveTransaction(transactionDTO);
 
         EmailDetails emailDetails = EmailDetails.builder()
                 .recipient(userToCredit.getEmail())
@@ -207,6 +220,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
     public BankResponse debitAccount(CreditDebitRequest creditDebitRequest) {
         if(!userRepo.existsByAccountNumber(creditDebitRequest.getAccountNumber())){
             return BankResponse.builder()
@@ -225,6 +239,14 @@ public class UserServiceImpl implements UserService {
         }
         userToDebit.setAccountBalance(userToDebit.getAccountBalance().subtract(creditDebitRequest.getAmount()));
         userRepo.save(userToDebit);
+
+        TransactionDTO transactionDTO=TransactionDTO.builder()
+                .accountNumber(userToDebit.getAccountNumber())
+                .transactionType("DEBIT")
+                .amount(creditDebitRequest.getAmount())
+                .status("SUCCESS")
+                .build();
+        transactionService.saveTransaction(transactionDTO);
 
         EmailDetails emailDetails = EmailDetails.builder()
                 .recipient(userToDebit.getEmail())
@@ -249,5 +271,88 @@ public class UserServiceImpl implements UserService {
                         .accountBalance(userToDebit.getAccountBalance())
                         .build())
                 .build();
+    }
+
+    @Transactional
+    public BankResponse transfer(TransferRequest transferRequest) {
+        if(!userRepo.existsByAccountNumber(transferRequest.getSourceAccountNumber())){
+            return BankResponse.builder()
+                    .responseCode(AccountUtils.ACCOUNT_DEBIT_NOT_FOUND_CODE)
+                    .responseMessage(AccountUtils.ACCOUNT_DEBIT_NOT_FOUND_MESSAGE)
+                    .accountInfo(null)
+                    .build();
+        }
+        if(!userRepo.existsByAccountNumber(transferRequest.getDestinationAccountNumber())){
+            return BankResponse.builder()
+                    .responseCode(AccountUtils.ACCOUNT_CREDIT_NOT_FOUND_CODE)
+                    .responseMessage(AccountUtils.ACCOUNT_CREDIT_NOT_FOUND_MESSAGE)
+                    .accountInfo(null)
+                    .build();
+        }
+        User sourceUser=userRepo.findByAccountNumber(transferRequest.getSourceAccountNumber()).get();
+        User destinationUser=userRepo.findByAccountNumber(transferRequest.getDestinationAccountNumber()).get();
+        if(sourceUser.getAccountBalance().compareTo(transferRequest.getAmount()) < 0){
+            return BankResponse.builder()
+                    .responseCode(AccountUtils.ACCOUNT_INSUFFICIENT_BALANCE_CODE)
+                    .responseMessage(AccountUtils.ACCOUNT_INSUFFICIENT_BALANCE_MESSAGE)
+                    .accountInfo(null)
+                    .build();
+        }
+        sourceUser.setAccountBalance(sourceUser.getAccountBalance().subtract(transferRequest.getAmount()));
+        destinationUser.setAccountBalance(destinationUser.getAccountBalance().add(transferRequest.getAmount()));
+        userRepo.save(sourceUser);
+        userRepo.save(destinationUser);
+        TransactionDTO sourceTransactionDTO=TransactionDTO.builder()
+                .accountNumber(sourceUser.getAccountNumber())
+                .transactionType("DEBIT")
+                .amount(transferRequest.getAmount())
+                .status("SUCCESS")
+                .build();
+        transactionService.saveTransaction(sourceTransactionDTO);
+        TransactionDTO destinationTransactionDTO=TransactionDTO.builder()
+                .accountNumber(destinationUser.getAccountNumber())
+                .transactionType("CREDIT")
+                .amount(transferRequest.getAmount())
+                .status("SUCCESS")
+                .build();
+        transactionService.saveTransaction(destinationTransactionDTO);
+
+        EmailDetails sourceEmailDetails = EmailDetails.builder()
+                .recipient(sourceUser.getEmail())
+                .subject("DEBIT ALERT")
+                .messagebody("Dear " + sourceUser.getFirstName()+" "+sourceUser.getOtherName()+" "+sourceUser.getLastName() + ",\n\n" +
+                        "An amount of ₹" + transferRequest.getAmount() + " has been successfully debited from your account to " +
+                        destinationUser.getFirstName() + " " + destinationUser.getLastName() + ".\n" +
+                        "Your updated account balance is ₹" + sourceUser.getAccountBalance() + ".\n\n" +
+                        "If you did not authorize this transaction, please contact our support team immediately.\n\n" +
+                        "Thank you for banking with us!\nBankApp Team.")
+                .build();
+        emailService.EmailAlert(sourceEmailDetails);
+        System.out.println("Sending email to: " + sourceUser.getEmail());
+
+        EmailDetails emailDetails = EmailDetails.builder()
+                .recipient(destinationUser.getEmail())
+                .subject("CREDIT ALERT")
+                .messagebody("Dear " + destinationUser.getFirstName()+" "+destinationUser.getOtherName()+" "+destinationUser.getLastName() + ",\n\n" +
+                        "An amount of ₹" + transferRequest.getAmount() + " has been successfully credited to your account from " +
+                        sourceUser.getFirstName() + " " + sourceUser.getLastName() + ".\n" +
+                        "Your updated account balance is ₹" + destinationUser.getAccountBalance() + ".\n\n" +
+                        "Thank you for banking with us!\nBankApp Team.")
+                .build();
+        emailService.EmailAlert(emailDetails);
+        System.out.println("Sending email to: " + destinationUser.getEmail());
+
+
+        return BankResponse.builder()
+                .responseCode(AccountUtils.ACCOUNT_TRANSFER_SUCCESS_CODE)
+                .responseMessage(AccountUtils.ACCOUNT_TRANSFER_SUCCESS_MESSAGE)
+                .accountInfo(AccountInfo.builder()
+                        .accountName(sourceUser.getFirstName() + " " + sourceUser.getOtherName()+" "+sourceUser.getLastName())
+                        .accountNumber(sourceUser.getAccountNumber())
+                        .accountBalance(sourceUser.getAccountBalance())
+                        .build())
+                .build();
+
+
     }
 }
