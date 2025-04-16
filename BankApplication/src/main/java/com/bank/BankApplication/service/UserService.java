@@ -13,5 +13,6 @@ public interface UserService {
     BankResponse creditAccount(CreditDebitRequest creditDebitRequest);
     BankResponse debitAccount(CreditDebitRequest creditDebitRequest);
     BankResponse transfer(TransferRequest transferRequest);
+    public BankResponse login(LoginDTO loginDTO);
 
 }

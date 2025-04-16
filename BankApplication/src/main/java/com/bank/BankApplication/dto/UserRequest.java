@@ -1,5 +1,6 @@
 package com.bank.BankApplication.dto;
 
+import com.bank.BankApplication.entity.Role;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -49,6 +50,14 @@ public class UserRequest {
     private String email;
 
     @Schema(
+            name = "Password",
+            description = "The user's password.",
+            example = "johndoe@546"
+    )
+    private String password;
+
+
+    @Schema(
             name = "Phone",
             description = "The user's primary phone number.",
             example = "+1234567890"
@@ -96,4 +105,12 @@ public class UserRequest {
             example = "active"
     )
     private String status;
+
+    @Schema(
+            name = "Role",
+            description = "The current role  (e.g., user, admin).",
+            example = "user"
+    )
+    private Role role;
+
 }

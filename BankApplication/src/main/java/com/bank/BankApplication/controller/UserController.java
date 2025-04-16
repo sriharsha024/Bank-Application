@@ -4,6 +4,7 @@ import com.bank.BankApplication.dto.*;
 import com.bank.BankApplication.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -99,6 +100,21 @@ public class UserController {
         }
         return new ResponseEntity<>(userService.transfer(transferRequest), HttpStatus.OK);
     }
+
+    @Operation(
+            summary = "User Login",
+            description = "Authenticates a user with email and password, returns a JWT token if credentials are valid."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Login successful"),
+            @ApiResponse(responseCode = "401", description = "Invalid email or password"),
+            @ApiResponse(responseCode = "400", description = "Bad request - missing required fields")
+    })
+    @PostMapping("/login")
+    public ResponseEntity<BankResponse> login(@RequestBody LoginDTO loginDTO) {
+        return new ResponseEntity<>(userService.login(loginDTO), HttpStatus.OK);
+    }
+
 
     @Operation(
             summary = "Get user details by account number",
