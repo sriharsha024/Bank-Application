@@ -385,6 +385,7 @@ public class UserServiceImpl implements UserService {
                 .subject("LOGIN ALERT")
                 .messagebody("Your account has been successfully logged in.")
                 .build();
+
         emailService.EmailAlert(loginAlert);
         System.out.println("Sending email to: " + loginDTO.getEmail());
         return BankResponse.builder()
